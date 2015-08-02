@@ -2,22 +2,21 @@ package me.deslee.arduinorover.utilities.tasks;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
-import android.os.ParcelUuid;
 import android.util.Log;
 
 import java.io.IOException;
-import java.net.Socket;
 import java.util.UUID;
 
-import me.deslee.arduinorover.utilities.BluetoothUtility;
+import me.deslee.arduinorover.utilities.BluetoothUtilityService;
 
 public class ConnectTask extends BluetoothTask<BluetoothDevice, Void, BluetoothSocket> {
-    public ConnectTask(BluetoothUtility bluetoothUtility) {
-        super(bluetoothUtility);
-    }
-
     public static final String TAG = "RoverApp_ConnectTask";
+    public String error;
     private UUID DEFAULT_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+
+    public ConnectTask(BluetoothUtilityService bluetoothUtilityService) {
+        super(bluetoothUtilityService);
+    }
 
     @Override
     protected BluetoothSocket doInBackground(BluetoothDevice... devices) {
@@ -44,10 +43,12 @@ public class ConnectTask extends BluetoothTask<BluetoothDevice, Void, BluetoothS
             try {
                 socket = device.createInsecureRfcommSocketToServiceRecord(DEFAULT_UUID);
             } catch (IOException e1) {
+                error = e1.getMessage();
                 return null;
             }
         }
         catch (IOException e) {
+            error = e.getMessage();
             return null;
         }
         try {
@@ -55,6 +56,7 @@ public class ConnectTask extends BluetoothTask<BluetoothDevice, Void, BluetoothS
             return socket;
         } catch (IOException e) {
             // Unable to connect; close the socket and get out
+            error = e.getMessage();
             try {
                 socket.close();
             } catch (IOException closeException) { }
@@ -65,6 +67,10 @@ public class ConnectTask extends BluetoothTask<BluetoothDevice, Void, BluetoothS
     @Override
     protected void onPostExecute(BluetoothSocket bluetoothSocket) {
         super.onPostExecute(bluetoothSocket);
-        bluetoothUtility.onConnected(bluetoothSocket);
+        if (bluetoothSocket != null && bluetoothSocket.isConnected()) {
+            bluetoothUtilityService.onConnected(bluetoothSocket);
+        } else {
+            bluetoothUtilityService.onError(error);
+        }
     }
 }

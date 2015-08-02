@@ -13,37 +13,50 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Observable;
-import java.util.Observer;
 
-import me.deslee.arduinorover.MyApplication;
+import de.greenrobot.event.EventBus;
+import de.greenrobot.event.Subscribe;
+import me.deslee.arduinorover.BluetoothServiceActivity;
 import me.deslee.arduinorover.R;
-import me.deslee.arduinorover.utilities.BluetoothUtility;
+import me.deslee.arduinorover.utilities.BluetoothUtilityService;
 
 /**
  * Created by desmo on 8/2/2015.
  */
-public class BluetoothConnectDialog extends DialogFragment implements DialogInterface.OnClickListener, Observer, View.OnClickListener {
+public class BluetoothConnectDialog extends DialogFragment implements DialogInterface.OnClickListener, View.OnClickListener {
 
+    public static final String TAG = "RoverApp_BTDiag";
     private View layoutView;
     private Button refreshButton;
-    public static final String TAG = "RoverApp_BTDiag";
-    private ArrayAdapter<BluetoothUtility.DeviceItem> adapter;
-    private ArrayList<BluetoothUtility.DeviceItem> deviceItems;
+    private ArrayAdapter<BluetoothUtilityService.DeviceItem> adapter;
+    private ArrayList<BluetoothUtilityService.DeviceItem> deviceItems;
+    private BluetoothUtilityService bluetoothUtilityService;
 
     @Override
     public void onAttach(Activity activity) {
         super.onAttach(activity);
-        BluetoothUtility utility = getBluetoothUtility();
-        utility.addObserver(this);
+        try {
+            bluetoothUtilityService = ((BluetoothServiceActivity) activity).getBluetoothService();
+        } catch (ClassCastException e) {
+            throw new ClassCastException(activity.toString() + " must implement BluetoothServiceActivity");
+        }
     }
 
     @Override
     public void onDetach() {
         super.onDetach();
-        BluetoothUtility utility = getBluetoothUtility();
-        utility.deleteObserver(this);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        EventBus.getDefault().register(this);
+    }
+
+    @Override
+    public void onPause() {
+        EventBus.getDefault().unregister(this);
+        super.onPause();
     }
 
     @Override
@@ -54,8 +67,7 @@ public class BluetoothConnectDialog extends DialogFragment implements DialogInte
         layoutView = inflater.inflate(R.layout.dialog_bluetooth_connect, null);
         refreshButton = (Button) layoutView.findViewById(R.id.btn_bt_refresh);
         refreshButton.setOnClickListener(this);
-        BluetoothUtility utility = getBluetoothUtility();
-        utility.getDevices();
+        bluetoothUtilityService.getDevices();
 
         deviceItems = new ArrayList<>();
         adapter = new ArrayAdapter<>(getActivity(), R.layout.simple_list_item_1, deviceItems);
@@ -69,10 +81,9 @@ public class BluetoothConnectDialog extends DialogFragment implements DialogInte
 
     @Override
     public void onClick(DialogInterface dialog, int which) {
-        BluetoothUtility utility = getBluetoothUtility();
-        BluetoothUtility.DeviceItem item = deviceItems.get(which);
-        utility.connect(item.device);
-        Log.i(TAG, "clicked " + which);
+        BluetoothUtilityService.DeviceItem item = deviceItems.get(which);
+        bluetoothUtilityService.connect(item.device);
+        Log.i(TAG, "clicked " + item.name);
     }
 
     @Override
@@ -80,30 +91,20 @@ public class BluetoothConnectDialog extends DialogFragment implements DialogInte
         switch(v.getId()) {
             case R.id.btn_bt_refresh:
                 Log.i(TAG, "refresh button clicked");
-                BluetoothUtility utility = getBluetoothUtility();
-                utility.getDevices();
+                bluetoothUtilityService.getDevices();
                 break;
         }
     }
 
-    @Override
-    public void update(Observable observable, Object data) {
-        try {
-            final BluetoothUtility.BluetoothUtilityEvent event = (BluetoothUtility.BluetoothUtilityEvent) data;
-            if (event.eventCode == BluetoothUtility.EventCode.RECEIVED_DEVICES) {
-                refreshButton.setText(R.string.refresh_button);
-                refreshButton.setEnabled(true);
-                deviceItems.clear();
-                deviceItems.addAll(event.deviceItems);
-                adapter.notifyDataSetChanged();
-            }
-        } catch(ClassCastException e) {
-            throw new ClassCastException(observable.toString()
-                    + " must implement BluetoothUtility");
-        }
-    }
+    @Subscribe
+    public void onEvent(BluetoothUtilityService.BluetoothUtilityEvent event) {
+        if (event.type == BluetoothUtilityService.EventType.RECEIVED_DEVICES) {
+            deviceItems.clear();
+            deviceItems.addAll(event.deviceItems);
 
-    public BluetoothUtility getBluetoothUtility() {
-        return ((MyApplication) this.getActivity().getApplication()).bluetoothUtility;
+            refreshButton.setText(R.string.refresh_button);
+            refreshButton.setEnabled(true);
+            adapter.notifyDataSetChanged();
+        }
     }
 }

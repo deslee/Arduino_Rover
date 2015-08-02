@@ -1,8 +1,12 @@
 package me.deslee.arduinorover;
 
 import android.bluetooth.BluetoothAdapter;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.support.v4.app.DialogFragment;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -13,14 +17,12 @@ import android.widget.TextView;
 
 import com.zerokol.views.JoystickView;
 
-import java.util.Observable;
-import java.util.Observer;
-
+import de.greenrobot.event.EventBus;
+import de.greenrobot.event.Subscribe;
 import me.deslee.arduinorover.dialogs.BluetoothConnectDialog;
-import me.deslee.arduinorover.utilities.BluetoothUtility;
+import me.deslee.arduinorover.utilities.BluetoothUtilityService;
 
-public class MainActivity extends AppCompatActivity implements Observer, JoystickView.OnJoystickMoveListener {
-
+public class MainActivity extends AppCompatActivity implements JoystickView.OnJoystickMoveListener, BluetoothServiceActivity {
     public static final int REQUEST_ENABLE_BT = 1;
 
     public static final String TAG = "RoverApp";
@@ -29,29 +31,62 @@ public class MainActivity extends AppCompatActivity implements Observer, Joystic
     private boolean bluetoothEnabled = false;
     private JoystickView joystick;
     private int lastJoystickDirection = 0;
+    private BluetoothUtilityService bluetoothUtilityService;
+
+    private ServiceConnection bluetoothServiceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            Log.i(TAG, "Service connected");
+            bluetoothUtilityService = ((BluetoothUtilityService.LocalBinder) service).getService();
+
+            if (bluetoothUtilityService.bluetoothAdapter == null) {
+                statusView.setText(R.string.no_bluetooth_status);
+            } else if (!bluetoothUtilityService.bluetoothAdapter.isEnabled()) {
+                Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+            } else {
+                bluetoothEnabled = true;
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            bluetoothUtilityService = null;
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         View mainView = getLayoutInflater().inflate(R.layout.activity_main, null);
         setContentView(mainView);
-        BluetoothUtility utility = ((MyApplication) getApplication()).bluetoothUtility;
+        Intent startServiceIntent = new Intent(this, BluetoothUtilityService.class);
+        Log.i(TAG, "binding service");
+        boolean isConnected = bindService(startServiceIntent, bluetoothServiceConnection, Context.BIND_AUTO_CREATE);
 
         statusView = (TextView) mainView.findViewById(R.id.status);
         joystick = (JoystickView) findViewById(R.id.joystickView);
 
         joystick.setOnJoystickMoveListener(this, JoystickView.DEFAULT_LOOP_INTERVAL);
+    }
 
-        if (utility.bluetoothAdapter == null) {
-            statusView.setText(R.string.no_bluetooth_status);
-        } else if (!utility.bluetoothAdapter.isEnabled()) {
-            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-        } else {
-            bluetoothEnabled = true;
-        }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unbindService(bluetoothServiceConnection);
+    }
 
-        utility.addObserver(this);
+    @Override
+    public void onResume() {
+        super.onResume();
+
+        EventBus.getDefault().register(this);
+    }
+
+    @Override
+    public void onPause() {
+        EventBus.getDefault().unregister(this);
+        super.onPause();
     }
 
     @Override
@@ -66,13 +101,6 @@ public class MainActivity extends AppCompatActivity implements Observer, Joystic
                 }
                 invalidateOptionsMenu();
         }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        BluetoothUtility utility = ((MyApplication) getApplication()).bluetoothUtility;
-        utility.deleteObserver(this);
     }
 
     @Override
@@ -105,26 +133,19 @@ public class MainActivity extends AppCompatActivity implements Observer, Joystic
         return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void update(Observable observable, Object data) {
-        try {
-            BluetoothUtility utility = (BluetoothUtility) observable;
-            final BluetoothUtility.BluetoothUtilityEvent event = (BluetoothUtility.BluetoothUtilityEvent) data;
-            if (event.eventCode == BluetoothUtility.EventCode.CONNECTING) {
-                joystick.setVisibility(View.INVISIBLE);
-                statusView.setText("Connecting...");
-            } else if (event.eventCode == BluetoothUtility.EventCode.CONNECTED) {
-                joystick.setVisibility(View.VISIBLE);
-                statusView.setText("Connected!");
-            } else if (event.eventCode == BluetoothUtility.EventCode.ERROR) {
-                joystick.setVisibility(View.INVISIBLE);
-                statusView.setText(event.message);
-            } else if (event.eventCode == BluetoothUtility.EventCode.DISCONNECTED) {
-                joystick.setVisibility(View.INVISIBLE);
-            }
-        } catch(ClassCastException e) {
-            throw new ClassCastException(observable.toString()
-                    + " must implement BluetoothUtility");
+    @Subscribe
+    public void onEvent(BluetoothUtilityService.BluetoothUtilityEvent event) {
+        if (event.type == BluetoothUtilityService.EventType.CONNECTING) {
+            joystick.setVisibility(View.INVISIBLE);
+            statusView.setText("Connecting...");
+        } else if (event.type == BluetoothUtilityService.EventType.CONNECTED) {
+            joystick.setVisibility(View.VISIBLE);
+            statusView.setText("Connected!");
+        } else if (event.type == BluetoothUtilityService.EventType.ERROR) {
+            joystick.setVisibility(View.INVISIBLE);
+            statusView.setText(event.message);
+        } else if (event.type == BluetoothUtilityService.EventType.DISCONNECTED) {
+            joystick.setVisibility(View.INVISIBLE);
         }
     }
 
@@ -180,7 +201,11 @@ public class MainActivity extends AppCompatActivity implements Observer, Joystic
                 cmd = cmd_stop;
         }
 
-        BluetoothUtility utility = ((MyApplication) getApplication()).bluetoothUtility;
-        utility.sendByte(cmd);
+        bluetoothUtilityService.sendByte(cmd);
+    }
+
+    @Override
+    public BluetoothUtilityService getBluetoothService() {
+        return bluetoothUtilityService;
     }
 }
