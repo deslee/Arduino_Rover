@@ -11,8 +11,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.ListAdapter;
-import android.widget.ListView;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -92,19 +90,13 @@ public class BluetoothConnectDialog extends DialogFragment implements DialogInte
     public void update(Observable observable, Object data) {
         try {
             final BluetoothUtility.BluetoothUtilityEvent event = (BluetoothUtility.BluetoothUtilityEvent) data;
-            this.getActivity().runOnUiThread(new Runnable() {
-
-                @Override
-                public void run() {
-                    if (event.eventCode == BluetoothUtility.EventCode.DEVICES_UPDATED) {
-                        refreshButton.setText(R.string.refresh_button);
-                        refreshButton.setEnabled(true);
-                        deviceItems.clear();
-                        deviceItems.addAll(Arrays.asList(event.deviceItems));
-                        adapter.notifyDataSetChanged();
-                    }
-                }
-            });
+            if (event.eventCode == BluetoothUtility.EventCode.RECEIVED_DEVICES) {
+                refreshButton.setText(R.string.refresh_button);
+                refreshButton.setEnabled(true);
+                deviceItems.clear();
+                deviceItems.addAll(event.deviceItems);
+                adapter.notifyDataSetChanged();
+            }
         } catch(ClassCastException e) {
             throw new ClassCastException(observable.toString()
                     + " must implement BluetoothUtility");

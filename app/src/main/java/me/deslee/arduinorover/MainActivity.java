@@ -4,7 +4,6 @@ import android.bluetooth.BluetoothAdapter;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.v4.app.DialogFragment;
-import android.support.v4.app.FragmentManager;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.Menu;
@@ -111,26 +110,18 @@ public class MainActivity extends AppCompatActivity implements Observer, Joystic
         try {
             BluetoothUtility utility = (BluetoothUtility) observable;
             final BluetoothUtility.BluetoothUtilityEvent event = (BluetoothUtility.BluetoothUtilityEvent) data;
-
-            this.runOnUiThread(new Runnable() {
-
-                @Override
-                public void run() {
-                    if (event.eventCode == BluetoothUtility.EventCode.CONNECTING) {
-                        joystick.setVisibility(View.INVISIBLE);
-                        statusView.setText("Connecting...");
-                    } else if (event.eventCode == BluetoothUtility.EventCode.CONNECTED) {
-                        joystick.setVisibility(View.VISIBLE);
-                        statusView.setText("Connected!");
-                    } else if (event.eventCode == BluetoothUtility.EventCode.ERROR) {
-                        joystick.setVisibility(View.INVISIBLE);
-                        statusView.setText(event.errorText);
-                    } else if (event.eventCode == BluetoothUtility.EventCode.DISCONNECTED) {
-                        joystick.setVisibility(View.INVISIBLE);
-                    }
-                }
-            });
-
+            if (event.eventCode == BluetoothUtility.EventCode.CONNECTING) {
+                joystick.setVisibility(View.INVISIBLE);
+                statusView.setText("Connecting...");
+            } else if (event.eventCode == BluetoothUtility.EventCode.CONNECTED) {
+                joystick.setVisibility(View.VISIBLE);
+                statusView.setText("Connected!");
+            } else if (event.eventCode == BluetoothUtility.EventCode.ERROR) {
+                joystick.setVisibility(View.INVISIBLE);
+                statusView.setText(event.message);
+            } else if (event.eventCode == BluetoothUtility.EventCode.DISCONNECTED) {
+                joystick.setVisibility(View.INVISIBLE);
+            }
         } catch(ClassCastException e) {
             throw new ClassCastException(observable.toString()
                     + " must implement BluetoothUtility");
